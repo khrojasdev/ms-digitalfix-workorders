@@ -45,11 +45,12 @@ public class OrdenDeTrabajoService {
     @Transactional
     public OrdenRespuestaDto cambiarEstado(Long ordenId, EstadoOrden nuevoEstado, ContextoEmpresa contexto) {
         OrdenDeTrabajo orden = repository.findById(ordenId)
-                .orElseThrow(() -> new RuntimeException("Orden no encontrada")); // Idealmente usar una excepción personalizada
+                .orElseThrow(() -> new cl.duoc.digitalfix.workorders.error.RecursoNoEncontrado("Orden de trabajo no encontrada"));
 
         // Validar aislamiento de datos
         if (!orden.getEmpresaId().equals(contexto.companyId())) {
-            throw new RuntimeException("Orden no encontrada"); // Simulamos 404 por seguridad
+            // Simulamos 404 por seguridad para no revelar que el ID existe en otra empresa
+            throw new cl.duoc.digitalfix.workorders.error.RecursoNoEncontrado("Orden de trabajo no encontrada");
         }
 
         orden.setEstado(nuevoEstado);

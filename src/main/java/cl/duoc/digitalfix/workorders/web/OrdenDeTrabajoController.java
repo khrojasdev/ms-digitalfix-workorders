@@ -48,6 +48,7 @@ public class OrdenDeTrabajoController {
 
     private ContextoEmpresa obtenerContexto() {
         return ContextoEmpresaHolder.obtener()
-                .orElseThrow(() -> new RuntimeException("No autorizado: Falta contexto de empresa"));
+                .orElseThrow(() -> new cl.duoc.digitalfix.workorders.error.AccesoDenegado("No autorizado: Falta contexto de empresa"));
     }
+
 }
