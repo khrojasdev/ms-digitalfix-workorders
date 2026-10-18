@@ -1,0 +1,3 @@
+logging:
+  level:
+    cl.duoc.digitalfix.workorders: DEBUG
