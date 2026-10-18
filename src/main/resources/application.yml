@@ -29,7 +29,9 @@ amqp:
   exchange:
     negocio: ordenes.negocio.exchange
   routing-key:
-    eventos: ordenes.eventos.v1
+    # Base de la routing key; el publisher le agrega el tipo de evento,
+    # p.ej. ordenes.eventos.cerrada. Compatible con los bindings ordenes.eventos.*
+    eventos: ordenes.eventos
 
 server:
   port: ${PUERTO:8083}
