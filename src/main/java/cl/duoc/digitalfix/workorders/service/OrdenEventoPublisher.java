@@ -30,7 +30,12 @@ public class OrdenEventoPublisher {
     public void publicarEvento(OrdenEventoDto evento) {
         try {
             String mensajeJson = objectMapper.writeValueAsString(evento);
-            rabbitTemplate.convertAndSend(exchange, routingKey, mensajeJson);
+            // Routing key por tipo de evento, p.ej. ordenes.eventos.cerrada.
+            // Los consumidores que se enlazan con ordenes.eventos.* siguen
+            // recibiendo todos; los que quieran un tipo puntual pueden enlazarse
+            // a esa clave exacta (util para separar ticket de despacho e informe).
+            String tipo = evento.tipoEvento() == null ? "desconocido" : evento.tipoEvento().toLowerCase();
+            rabbitTemplate.convertAndSend(exchange, routingKey + "." + tipo, mensajeJson);
             log.info("Evento publicado en RabbitMQ: Orden {} - {}", evento.ordenId(), evento.tipoEvento());
         } catch (JsonProcessingException e) {
             log.error("Error al convertir el evento a JSON para RabbitMQ", e);
