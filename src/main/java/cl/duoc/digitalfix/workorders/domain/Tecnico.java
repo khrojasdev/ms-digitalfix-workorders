@@ -33,6 +33,10 @@ public class Tecnico {
     @Column(nullable = false)
     private boolean activo = true;
 
+    /** Cuenta de Entra ID (oid) con que el tecnico inicia sesion; null si aun no entra. */
+    @Column(name = "usuario_oid", length = 100)
+    private String usuarioOid;
+
     @Column(name = "fecha_creacion", nullable = false, updatable = false)
     private LocalDateTime fechaCreacion;
 
@@ -63,6 +67,10 @@ public class Tecnico {
     public void desactivar() { this.activo = false; }
     public void reactivar() { this.activo = true; }
 
+    /** Vincula la ficha con la cuenta que inicio sesion con el mismo correo. */
+    public void vincularCuenta(String oid) { this.usuarioOid = oid; }
+
+    public String getUsuarioOid() { return usuarioOid; }
     public Long getId() { return id; }
     public Long getEmpresaId() { return empresaId; }
     public String getNombre() { return nombre; }

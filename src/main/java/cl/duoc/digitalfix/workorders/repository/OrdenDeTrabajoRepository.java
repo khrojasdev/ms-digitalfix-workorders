@@ -7,4 +7,7 @@ import java.util.List;
 public interface OrdenDeTrabajoRepository extends JpaRepository<OrdenDeTrabajo, Long> {
     // Buscar todas las órdenes de una empresa (para mantener el aislamiento de datos)
     List<OrdenDeTrabajo> findByEmpresaId(Long empresaId);
+
+    // Las ordenes asignadas a un tecnico, para su vista "Mis ordenes"
+    List<OrdenDeTrabajo> findByEmpresaIdAndTecnicoIdOrderByFechaCreacionDesc(Long empresaId, Long tecnicoId);
 }

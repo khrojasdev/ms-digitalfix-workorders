@@ -11,10 +11,12 @@ public record TecnicoRespuestaDto(
         String telefono,
         String especialidad,
         boolean activo,
-        LocalDateTime fechaCreacion
+        LocalDateTime fechaCreacion,
+        /** Ya inicio sesion con su cuenta y quedo vinculado. */
+        boolean cuentaVinculada
 ) {
     public static TecnicoRespuestaDto desde(Tecnico t) {
         return new TecnicoRespuestaDto(t.getId(), t.getNombre(), t.getEmail(), t.getTelefono(),
-                t.getEspecialidad(), t.isActivo(), t.getFechaCreacion());
+                t.getEspecialidad(), t.isActivo(), t.getFechaCreacion(), t.getUsuarioOid() != null);
     }
 }
