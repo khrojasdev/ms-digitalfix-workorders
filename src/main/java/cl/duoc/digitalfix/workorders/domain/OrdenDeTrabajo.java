@@ -23,6 +23,9 @@ public class OrdenDeTrabajo {
     @Column(name = "asignado_a")
     private String asignadoA;
 
+    @Column(name = "tecnico_id")
+    private Long tecnicoId;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private EstadoOrden estado;
@@ -68,6 +71,15 @@ public class OrdenDeTrabajo {
     public void setCreadorId(String creadorId) { this.creadorId = creadorId; }
     public String getAsignadoA() { return asignadoA; }
     public void setAsignadoA(String asignadoA) { this.asignadoA = asignadoA; }
+    public Long getTecnicoId() { return tecnicoId; }
+
+    /** Deja la orden ASIGNADA al tecnico; guarda tambien su nombre para mostrarlo. */
+    public void asignarA(Tecnico tecnico) {
+        this.tecnicoId = tecnico.getId();
+        this.asignadoA = tecnico.getNombre();
+        this.estado = EstadoOrden.ASIGNADA;
+    }
+
     public EstadoOrden getEstado() { return estado; }
     public void setEstado(EstadoOrden estado) { this.estado = estado; }
     public String getComentarios() { return comentarios; }
