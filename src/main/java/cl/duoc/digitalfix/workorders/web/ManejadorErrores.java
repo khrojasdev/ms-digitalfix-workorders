@@ -1,6 +1,7 @@
 package cl.duoc.digitalfix.workorders.web;
 
 import cl.duoc.digitalfix.workorders.error.AccesoDenegado;
+import cl.duoc.digitalfix.workorders.error.Conflicto;
 import cl.duoc.digitalfix.workorders.error.RecursoNoEncontrado;
 import cl.duoc.digitalfix.workorders.error.SolicitudInvalida;
 import cl.duoc.digitalfix.workorders.error.TransicionInvalida;
@@ -36,6 +37,12 @@ public class ManejadorErrores {
     public ResponseEntity<RespuestaError> manejarTransicionInvalida(TransicionInvalida ex) {
         return ResponseEntity.status(HttpStatus.CONFLICT)
                 .body(RespuestaError.crear("TRANSICION_INVALIDA", ex.getMessage()));
+    }
+
+    @ExceptionHandler(Conflicto.class)
+    public ResponseEntity<RespuestaError> manejarConflicto(Conflicto ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(RespuestaError.crear("CONFLICTO", ex.getMessage()));
     }
 
     // Atrapa los errores de validación (ej. @NotNull, @Size en los DTOs)
