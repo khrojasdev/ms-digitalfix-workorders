@@ -3,6 +3,7 @@ package cl.duoc.digitalfix.workorders.web;
 import cl.duoc.digitalfix.workorders.error.AccesoDenegado;
 import cl.duoc.digitalfix.workorders.error.RecursoNoEncontrado;
 import cl.duoc.digitalfix.workorders.error.SolicitudInvalida;
+import cl.duoc.digitalfix.workorders.error.TransicionInvalida;
 import cl.duoc.digitalfix.workorders.web.dto.RespuestaError;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -29,6 +30,12 @@ public class ManejadorErrores {
     public ResponseEntity<RespuestaError> manejarSolicitudInvalida(SolicitudInvalida ex) {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                 .body(RespuestaError.crear("SOLICITUD_INVALIDA", ex.getMessage()));
+    }
+
+    @ExceptionHandler(TransicionInvalida.class)
+    public ResponseEntity<RespuestaError> manejarTransicionInvalida(TransicionInvalida ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(RespuestaError.crear("TRANSICION_INVALIDA", ex.getMessage()));
     }
 
     // Atrapa los errores de validación (ej. @NotNull, @Size en los DTOs)

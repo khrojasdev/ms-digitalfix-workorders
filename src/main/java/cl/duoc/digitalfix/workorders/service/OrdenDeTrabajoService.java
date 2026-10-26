@@ -3,6 +3,8 @@ package cl.duoc.digitalfix.workorders.service;
 import cl.duoc.digitalfix.workorders.config.ContextoEmpresa;
 import cl.duoc.digitalfix.workorders.domain.EstadoOrden;
 import cl.duoc.digitalfix.workorders.domain.OrdenDeTrabajo;
+import cl.duoc.digitalfix.workorders.error.SolicitudInvalida;
+import cl.duoc.digitalfix.workorders.error.TransicionInvalida;
 import cl.duoc.digitalfix.workorders.repository.OrdenDeTrabajoRepository;
 import cl.duoc.digitalfix.workorders.web.dto.OrdenEventoDto;
 import cl.duoc.digitalfix.workorders.web.dto.OrdenRespuestaDto;
@@ -53,12 +55,42 @@ public class OrdenDeTrabajoService {
             throw new cl.duoc.digitalfix.workorders.error.RecursoNoEncontrado("Orden de trabajo no encontrada");
         }
 
+        validarTransicion(orden, nuevoEstado);
+
         orden.setEstado(nuevoEstado);
         orden = repository.save(orden);
 
         emitirEvento(orden, nuevoEstado.name(), contexto);
 
         return mapearADto(orden);
+    }
+
+    /**
+     * Aplica las reglas del caso: no se salta etapas, ASIGNADA solo se logra
+     * asignando un tecnico y las ordenes cerradas o canceladas no cambian.
+     */
+    private void validarTransicion(OrdenDeTrabajo orden, EstadoOrden destino) {
+        if (destino == null) {
+            throw new SolicitudInvalida("Falta el estado de destino.");
+        }
+        EstadoOrden actual = orden.getEstado();
+        if (actual == destino) {
+            throw new TransicionInvalida("La orden ya esta en " + actual + ".");
+        }
+        if (actual.esFinal()) {
+            throw new TransicionInvalida("La orden esta " + actual + " y ya no puede cambiar de estado.");
+        }
+        if (destino == EstadoOrden.ASIGNADA) {
+            throw new TransicionInvalida("Para pasar a ASIGNADA hay que asignar un tecnico (PUT /api/workorders/"
+                    + orden.getId() + "/asignacion).");
+        }
+        if (!actual.puedePasarA(destino)) {
+            if (actual == EstadoOrden.CREADA) {
+                throw new TransicionInvalida("No se puede pasar a " + destino + " sin ASIGNAR un tecnico.");
+            }
+            throw new TransicionInvalida("No se puede pasar de " + actual + " a " + destino
+                    + ". Siguientes permitidos: " + actual.siguientes() + ".");
+        }
     }
 
     public List<OrdenRespuestaDto> listarOrdenesPorEmpresa(Long empresaId) {
