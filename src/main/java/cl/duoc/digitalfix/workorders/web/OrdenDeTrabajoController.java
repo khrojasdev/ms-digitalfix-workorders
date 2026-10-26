@@ -5,6 +5,7 @@ import cl.duoc.digitalfix.workorders.config.ContextoEmpresaHolder;
 import cl.duoc.digitalfix.workorders.domain.EstadoOrden;
 import cl.duoc.digitalfix.workorders.error.SolicitudInvalida;
 import cl.duoc.digitalfix.workorders.service.OrdenDeTrabajoService;
+import cl.duoc.digitalfix.workorders.web.dto.AsignacionDto;
 import cl.duoc.digitalfix.workorders.web.dto.CambioEstadoDto;
 import cl.duoc.digitalfix.workorders.web.dto.OrdenRespuestaDto;
 import cl.duoc.digitalfix.workorders.web.dto.OrdenSolicitudDto;
@@ -48,6 +49,15 @@ public class OrdenDeTrabajoController {
         ContextoEmpresa contexto = obtenerContexto();
         OrdenRespuestaDto respuesta = service.cambiarEstado(id, interpretar(cambio.status()), contexto);
         return ResponseEntity.ok(respuesta);
+    }
+
+    /** El supervisor asigna un tecnico: PUT /api/workorders/{id}/asignacion con {"tecnicoId": 3}. */
+    @PutMapping("/{id}/asignacion")
+    public ResponseEntity<OrdenRespuestaDto> asignarTecnico(
+            @PathVariable Long id,
+            @Valid @RequestBody AsignacionDto asignacion) {
+        ContextoEmpresa contexto = obtenerContexto();
+        return ResponseEntity.ok(service.asignarTecnico(id, asignacion.tecnicoId(), contexto));
     }
 
     /** Forma anterior (?nuevoEstado=), se mantiene para no romper al frontend actual. */

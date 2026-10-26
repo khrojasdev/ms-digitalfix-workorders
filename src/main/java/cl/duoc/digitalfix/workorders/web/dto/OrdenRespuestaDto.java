@@ -10,5 +10,7 @@ public record OrdenRespuestaDto(
         String asignadoA,
         String comentarios,
         LocalDateTime fechaCreacion,
-        LocalDateTime fechaActualizacion
+        LocalDateTime fechaActualizacion,
+        Long tecnicoId,
+        String creadorId
 ) {}

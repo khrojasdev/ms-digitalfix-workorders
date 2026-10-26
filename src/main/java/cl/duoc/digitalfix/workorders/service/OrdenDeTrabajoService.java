@@ -1,11 +1,15 @@
 package cl.duoc.digitalfix.workorders.service;
 
 import cl.duoc.digitalfix.workorders.config.ContextoEmpresa;
+import cl.duoc.digitalfix.workorders.config.Permisos;
 import cl.duoc.digitalfix.workorders.domain.EstadoOrden;
 import cl.duoc.digitalfix.workorders.domain.OrdenDeTrabajo;
+import cl.duoc.digitalfix.workorders.domain.Tecnico;
+import cl.duoc.digitalfix.workorders.error.RecursoNoEncontrado;
 import cl.duoc.digitalfix.workorders.error.SolicitudInvalida;
 import cl.duoc.digitalfix.workorders.error.TransicionInvalida;
 import cl.duoc.digitalfix.workorders.repository.OrdenDeTrabajoRepository;
+import cl.duoc.digitalfix.workorders.repository.TecnicoRepository;
 import cl.duoc.digitalfix.workorders.web.dto.OrdenEventoDto;
 import cl.duoc.digitalfix.workorders.web.dto.OrdenRespuestaDto;
 import cl.duoc.digitalfix.workorders.web.dto.OrdenSolicitudDto;
@@ -22,10 +26,15 @@ public class OrdenDeTrabajoService {
 
     private final OrdenDeTrabajoRepository repository;
     private final OrdenEventoPublisher publisher;
+    private final TecnicoService tecnicos;
+    private final TecnicoRepository tecnicoRepository;
 
-    public OrdenDeTrabajoService(OrdenDeTrabajoRepository repository, OrdenEventoPublisher publisher) {
+    public OrdenDeTrabajoService(OrdenDeTrabajoRepository repository, OrdenEventoPublisher publisher,
+                                 TecnicoService tecnicos, TecnicoRepository tecnicoRepository) {
         this.repository = repository;
         this.publisher = publisher;
+        this.tecnicos = tecnicos;
+        this.tecnicoRepository = tecnicoRepository;
     }
 
     @Transactional
@@ -39,30 +48,67 @@ public class OrdenDeTrabajoService {
 
         orden = repository.save(orden);
 
-        emitirEvento(orden, "CREADA", contexto);
+        emitirEvento(orden, "CREADA", null, contexto);
 
         return mapearADto(orden);
     }
 
     @Transactional
     public OrdenRespuestaDto cambiarEstado(Long ordenId, EstadoOrden nuevoEstado, ContextoEmpresa contexto) {
-        OrdenDeTrabajo orden = repository.findById(ordenId)
-                .orElseThrow(() -> new cl.duoc.digitalfix.workorders.error.RecursoNoEncontrado("Orden de trabajo no encontrada"));
-
-        // Validar aislamiento de datos
-        if (!orden.getEmpresaId().equals(contexto.companyId())) {
-            // Simulamos 404 por seguridad para no revelar que el ID existe en otra empresa
-            throw new cl.duoc.digitalfix.workorders.error.RecursoNoEncontrado("Orden de trabajo no encontrada");
-        }
+        OrdenDeTrabajo orden = buscarDeLaEmpresa(ordenId, contexto);
 
         validarTransicion(orden, nuevoEstado);
 
+        EstadoOrden anterior = orden.getEstado();
         orden.setEstado(nuevoEstado);
         orden = repository.save(orden);
 
-        emitirEvento(orden, nuevoEstado.name(), contexto);
+        emitirEvento(orden, nuevoEstado.name(), anterior, contexto);
 
         return mapearADto(orden);
+    }
+
+    /**
+     * El supervisor asigna un tecnico activo de su empresa. La orden pasa a
+     * ASIGNADA y se emite el evento ASIGNADA (catalog descuenta stock y notify
+     * envia el ticket de despacho). Mientras no salga a terreno se puede
+     * reasignar; en ese caso el evento lleva estadoAnterior = ASIGNADA.
+     */
+    @Transactional
+    public OrdenRespuestaDto asignarTecnico(Long ordenId, Long tecnicoId, ContextoEmpresa contexto) {
+        Permisos.exigirAlguno(contexto, Permisos.GESTION);
+        OrdenDeTrabajo orden = buscarDeLaEmpresa(ordenId, contexto);
+
+        if (!orden.getEstado().admiteAsignacion()) {
+            throw new TransicionInvalida("La orden esta " + orden.getEstado()
+                    + "; solo se asigna tecnico a ordenes CREADA o ASIGNADA.");
+        }
+
+        Tecnico tecnico = tecnicos.buscarDeLaEmpresa(tecnicoId, contexto);
+        if (!tecnico.isActivo()) {
+            throw new TransicionInvalida("El tecnico " + tecnico.getNombre() + " esta desactivado.");
+        }
+        if (tecnico.getId().equals(orden.getTecnicoId())) {
+            throw new TransicionInvalida("La orden ya esta asignada a " + tecnico.getNombre() + ".");
+        }
+
+        EstadoOrden anterior = orden.getEstado();
+        orden.asignarA(tecnico);
+        orden = repository.save(orden);
+
+        emitirEvento(orden, EstadoOrden.ASIGNADA.name(), anterior, contexto, tecnico);
+
+        return mapearADto(orden);
+    }
+
+    /** Orden de la empresa del contexto; si es de otra empresa, 404 para no revelar que existe. */
+    private OrdenDeTrabajo buscarDeLaEmpresa(Long ordenId, ContextoEmpresa contexto) {
+        OrdenDeTrabajo orden = repository.findById(ordenId)
+                .orElseThrow(() -> new RecursoNoEncontrado("Orden de trabajo no encontrada"));
+        if (!orden.getEmpresaId().equals(contexto.companyId())) {
+            throw new RecursoNoEncontrado("Orden de trabajo no encontrada");
+        }
+        return orden;
     }
 
     /**
@@ -99,8 +145,15 @@ public class OrdenDeTrabajoService {
                 .collect(Collectors.toList());
     }
 
-    private void emitirEvento(OrdenDeTrabajo orden, String tipoEvento, ContextoEmpresa contexto) {
-        // Generamos un UUID único para la idempotencia
+    private void emitirEvento(OrdenDeTrabajo orden, String tipoEvento, EstadoOrden anterior, ContextoEmpresa contexto) {
+        Tecnico tecnico = orden.getTecnicoId() == null ? null
+                : tecnicoRepository.findById(orden.getTecnicoId()).orElse(null);
+        emitirEvento(orden, tipoEvento, anterior, contexto, tecnico);
+    }
+
+    private void emitirEvento(OrdenDeTrabajo orden, String tipoEvento, EstadoOrden anterior,
+                              ContextoEmpresa contexto, Tecnico tecnico) {
+        // Generamos un UUID unico para la idempotencia
         String eventKey = UUID.randomUUID().toString();
 
         OrdenEventoDto evento = new OrdenEventoDto(
@@ -110,7 +163,16 @@ public class OrdenDeTrabajoService {
                 contexto.userOid(),
                 contexto.companyId(),
                 LocalDateTime.now(),
-                contexto.correlacion()
+                contexto.correlacion(),
+                anterior == null ? null : anterior.name(),
+                orden.getEstado().name(),
+                orden.getServicioId(),
+                orden.getCreadorId(),
+                orden.getComentarios(),
+                tecnico == null ? null : tecnico.getId(),
+                tecnico == null ? orden.getAsignadoA() : tecnico.getNombre(),
+                tecnico == null ? null : tecnico.getEmail(),
+                tecnico == null ? null : tecnico.getTelefono()
         );
         publisher.publicarEvento(evento);
     }
@@ -123,7 +185,9 @@ public class OrdenDeTrabajoService {
                 orden.getAsignadoA(),
                 orden.getComentarios(),
                 orden.getFechaCreacion(),
-                orden.getFechaActualizacion()
+                orden.getFechaActualizacion(),
+                orden.getTecnicoId(),
+                orden.getCreadorId()
         );
     }
 }
