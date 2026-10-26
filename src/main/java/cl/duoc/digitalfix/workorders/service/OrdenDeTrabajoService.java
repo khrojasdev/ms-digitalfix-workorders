@@ -5,24 +5,33 @@ import cl.duoc.digitalfix.workorders.config.Permisos;
 import cl.duoc.digitalfix.workorders.domain.EstadoOrden;
 import cl.duoc.digitalfix.workorders.domain.OrdenDeTrabajo;
 import cl.duoc.digitalfix.workorders.domain.Tecnico;
+import cl.duoc.digitalfix.workorders.error.AccesoDenegado;
 import cl.duoc.digitalfix.workorders.error.RecursoNoEncontrado;
 import cl.duoc.digitalfix.workorders.error.SolicitudInvalida;
 import cl.duoc.digitalfix.workorders.error.TransicionInvalida;
 import cl.duoc.digitalfix.workorders.repository.OrdenDeTrabajoRepository;
 import cl.duoc.digitalfix.workorders.repository.TecnicoRepository;
+import cl.duoc.digitalfix.workorders.web.dto.MisOrdenesDto;
 import cl.duoc.digitalfix.workorders.web.dto.OrdenEventoDto;
 import cl.duoc.digitalfix.workorders.web.dto.OrdenRespuestaDto;
 import cl.duoc.digitalfix.workorders.web.dto.OrdenSolicitudDto;
+import cl.duoc.digitalfix.workorders.web.dto.TecnicoRespuestaDto;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.EnumSet;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Service
 public class OrdenDeTrabajoService {
+
+    /** Lo que un TECNICO puede marcar en sus ordenes: el avance en terreno, no cancelar. */
+    private static final Set<EstadoOrden> ESTADOS_DEL_TECNICO =
+            EnumSet.of(EstadoOrden.EN_DESPLAZAMIENTO, EstadoOrden.EN_EJECUCION, EstadoOrden.CERRADA);
 
     private final OrdenDeTrabajoRepository repository;
     private final OrdenEventoPublisher publisher;
@@ -57,6 +66,7 @@ public class OrdenDeTrabajoService {
     public OrdenRespuestaDto cambiarEstado(Long ordenId, EstadoOrden nuevoEstado, ContextoEmpresa contexto) {
         OrdenDeTrabajo orden = buscarDeLaEmpresa(ordenId, contexto);
 
+        autorizarCambio(orden, nuevoEstado, contexto);
         validarTransicion(orden, nuevoEstado);
 
         EstadoOrden anterior = orden.getEstado();
@@ -99,6 +109,37 @@ public class OrdenDeTrabajoService {
         emitirEvento(orden, EstadoOrden.ASIGNADA.name(), anterior, contexto, tecnico);
 
         return mapearADto(orden);
+    }
+
+    /**
+     * ADMIN y SUPERVISOR cambian cualquier orden de su empresa. El TECNICO solo
+     * las suyas, y solo para avanzar en terreno (no cancela). El resto, no.
+     */
+    private void autorizarCambio(OrdenDeTrabajo orden, EstadoOrden destino, ContextoEmpresa contexto) {
+        if (Permisos.gestiona(contexto)) {
+            return;
+        }
+        if (contexto.tieneRol(Permisos.TECNICO)) {
+            Tecnico yo = tecnicos.delUsuario(contexto);
+            if (!yo.getId().equals(orden.getTecnicoId())) {
+                throw new AccesoDenegado("La orden #" + orden.getId() + " no esta asignada a ti.");
+            }
+            if (destino != null && !ESTADOS_DEL_TECNICO.contains(destino)) {
+                throw new AccesoDenegado("Un tecnico solo marca En desplazamiento, En ejecucion o Cerrada.");
+            }
+            return;
+        }
+        throw new AccesoDenegado("Tu rol no permite cambiar el estado de las ordenes.");
+    }
+
+    /** Vista del TECNICO: su ficha y sus ordenes, de la mas nueva a la mas antigua. */
+    @Transactional
+    public MisOrdenesDto misOrdenes(ContextoEmpresa contexto) {
+        Tecnico yo = tecnicos.delUsuario(contexto);
+        List<OrdenRespuestaDto> ordenes = repository
+                .findByEmpresaIdAndTecnicoIdOrderByFechaCreacionDesc(contexto.companyId(), yo.getId())
+                .stream().map(this::mapearADto).toList();
+        return new MisOrdenesDto(TecnicoRespuestaDto.desde(yo), ordenes);
     }
 
     /** Orden de la empresa del contexto; si es de otra empresa, 404 para no revelar que existe. */

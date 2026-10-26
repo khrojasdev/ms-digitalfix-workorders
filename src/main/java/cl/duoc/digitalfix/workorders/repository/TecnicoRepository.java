@@ -14,6 +14,10 @@ public interface TecnicoRepository extends JpaRepository<Tecnico, Long> {
 
     Optional<Tecnico> findByIdAndEmpresaId(Long id, Long empresaId);
 
+    Optional<Tecnico> findByEmpresaIdAndUsuarioOid(Long empresaId, String usuarioOid);
+
+    Optional<Tecnico> findByEmpresaIdAndEmailIgnoreCase(Long empresaId, String email);
+
     boolean existsByEmpresaIdAndEmailIgnoreCase(Long empresaId, String email);
 
     boolean existsByEmpresaIdAndEmailIgnoreCaseAndIdNot(Long empresaId, String email, Long id);

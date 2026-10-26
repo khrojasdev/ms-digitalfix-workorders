@@ -3,6 +3,7 @@ package cl.duoc.digitalfix.workorders.service;
 import cl.duoc.digitalfix.workorders.config.ContextoEmpresa;
 import cl.duoc.digitalfix.workorders.config.Permisos;
 import cl.duoc.digitalfix.workorders.domain.Tecnico;
+import cl.duoc.digitalfix.workorders.error.AccesoDenegado;
 import cl.duoc.digitalfix.workorders.error.Conflicto;
 import cl.duoc.digitalfix.workorders.error.RecursoNoEncontrado;
 import cl.duoc.digitalfix.workorders.error.SolicitudInvalida;
@@ -13,6 +14,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Optional;
 
 /** Tecnicos de terreno de la empresa. Los gestiona el ADMIN o el SUPERVISOR. */
 @Service
@@ -79,6 +81,43 @@ public class TecnicoService {
         }
         return repository.findByIdAndEmpresaId(id, contexto.companyId())
                 .orElseThrow(() -> new RecursoNoEncontrado("Tecnico no encontrado"));
+    }
+
+    /**
+     * La ficha del TECNICO que esta llamando. Se busca por su cuenta (oid); si
+     * aun no esta vinculada, se busca por el correo con que inicio sesion y se
+     * vincula. Asi el supervisor solo tiene que darlo de alta con el mismo
+     * correo de su cuenta de Entra ID.
+     */
+    @Transactional
+    public Tecnico delUsuario(ContextoEmpresa contexto) {
+        Permisos.exigirAlguno(contexto, Permisos.TECNICO);
+        if (contexto.userOid() == null || contexto.userOid().isBlank()) {
+            throw new AccesoDenegado("No se pudo identificar tu cuenta.");
+        }
+
+        Optional<Tecnico> vinculado = repository.findByEmpresaIdAndUsuarioOid(contexto.companyId(), contexto.userOid());
+        Tecnico tecnico = vinculado.orElseGet(() -> vincularPorCorreo(contexto));
+
+        if (!tecnico.isActivo()) {
+            throw new AccesoDenegado("Tu ficha de tecnico esta desactivada. Habla con tu supervisor.");
+        }
+        return tecnico;
+    }
+
+    private Tecnico vincularPorCorreo(ContextoEmpresa contexto) {
+        String email = normalizarEmail(contexto.email());
+        Tecnico tecnico = email == null ? null
+                : repository.findByEmpresaIdAndEmailIgnoreCase(contexto.companyId(), email).orElse(null);
+        if (tecnico == null) {
+            throw new RecursoNoEncontrado("Tu cuenta" + (email == null ? "" : " (" + email + ")")
+                    + " no esta registrada como tecnico en tu empresa. Pide al supervisor que te agregue con ese correo.");
+        }
+        if (tecnico.getUsuarioOid() != null) {
+            throw new Conflicto("La ficha de " + tecnico.getNombre() + " ya esta vinculada a otra cuenta.");
+        }
+        tecnico.vincularCuenta(contexto.userOid());
+        return repository.save(tecnico);
     }
 
     private static String normalizarEmail(String email) {

@@ -11,6 +11,12 @@ import java.util.Arrays;
 public final class Permisos {
 
     public static final String[] GESTION = {"ADMIN", "SUPERVISOR"};
+    public static final String TECNICO = "TECNICO";
+
+    /** true si gestiona (ADMIN o SUPERVISOR). */
+    public static boolean gestiona(ContextoEmpresa contexto) {
+        return Arrays.stream(GESTION).anyMatch(contexto::tieneRol);
+    }
 
     private Permisos() {}
 

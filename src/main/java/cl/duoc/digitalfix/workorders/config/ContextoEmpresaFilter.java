@@ -25,10 +25,12 @@ public class ContextoEmpresaFilter extends OncePerRequestFilter {
             String oid = request.getHeader("X-User-Oid");
             String empresaStr = request.getHeader("X-Company-Id");
             String rolesStr = request.getHeader("X-Roles");
+            String email = request.getHeader("X-User-Email");
             if (empresaStr != null && !empresaStr.isBlank()) {
                 Long companyId = Long.parseLong(empresaStr.trim());
-                Set<String> roles = rolesStr == null || rolesStr.isBlank() ? Collections.emptySet() : Arrays.stream(rolesStr.split(",")).map(String::trim).collect(Collectors.toSet());
-                ContextoEmpresaHolder.establecer(new ContextoEmpresa(oid, companyId, roles, correlacion));
+                Set<String> roles = rolesStr == null || rolesStr.isBlank() ? Collections.emptySet() : Arrays.stream(rolesStr.split(",")).map(String::trim).map(String::toUpperCase).collect(Collectors.toSet());
+                ContextoEmpresaHolder.establecer(new ContextoEmpresa(oid, companyId, roles, correlacion,
+                        email == null || email.isBlank() ? null : email.trim().toLowerCase()));
             }
             filterChain.doFilter(request, response);
         } finally {

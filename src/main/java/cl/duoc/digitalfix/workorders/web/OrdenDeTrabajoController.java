@@ -7,6 +7,7 @@ import cl.duoc.digitalfix.workorders.error.SolicitudInvalida;
 import cl.duoc.digitalfix.workorders.service.OrdenDeTrabajoService;
 import cl.duoc.digitalfix.workorders.web.dto.AsignacionDto;
 import cl.duoc.digitalfix.workorders.web.dto.CambioEstadoDto;
+import cl.duoc.digitalfix.workorders.web.dto.MisOrdenesDto;
 import cl.duoc.digitalfix.workorders.web.dto.OrdenRespuestaDto;
 import cl.duoc.digitalfix.workorders.web.dto.OrdenSolicitudDto;
 import jakarta.validation.Valid;
@@ -42,6 +43,12 @@ public class OrdenDeTrabajoController {
     }
 
     /** Cambio de estado del caso: PUT /api/workorders/{id}/status con {"status": "EN_DESPLAZAMIENTO"}. */
+    /** El TECNICO ve las ordenes que tiene asignadas (y su ficha). */
+    @GetMapping("/mias")
+    public ResponseEntity<MisOrdenesDto> misOrdenes() {
+        return ResponseEntity.ok(service.misOrdenes(obtenerContexto()));
+    }
+
     @PutMapping("/{id}/status")
     public ResponseEntity<OrdenRespuestaDto> cambiarEstado(
             @PathVariable Long id,
