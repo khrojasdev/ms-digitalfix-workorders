@@ -8,13 +8,17 @@ import cl.duoc.digitalfix.workorders.service.OrdenDeTrabajoService;
 import cl.duoc.digitalfix.workorders.web.dto.AsignacionDto;
 import cl.duoc.digitalfix.workorders.web.dto.CambioEstadoDto;
 import cl.duoc.digitalfix.workorders.web.dto.MisOrdenesDto;
+import cl.duoc.digitalfix.workorders.web.dto.OrdenDetalleDto;
 import cl.duoc.digitalfix.workorders.web.dto.OrdenRespuestaDto;
 import cl.duoc.digitalfix.workorders.web.dto.OrdenSolicitudDto;
 import jakarta.validation.Valid;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDate;
+import java.time.LocalTime;
 import java.util.Arrays;
 import java.util.List;
 
@@ -35,26 +39,47 @@ public class OrdenDeTrabajoController {
         return ResponseEntity.status(HttpStatus.CREATED).body(respuesta);
     }
 
+    /**
+     * GET /api/workorders?status=EN_EJECUCION&from=2026-10-01&to=2026-10-31
+     * Todos los filtros son opcionales; las fechas son de creacion (from desde
+     * las 00:00, to hasta las 23:59:59). El CLIENTE ve solo sus ordenes.
+     */
     @GetMapping
-    public ResponseEntity<List<OrdenRespuestaDto>> listarOrdenes() {
+    public ResponseEntity<List<OrdenRespuestaDto>> listarOrdenes(
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
         ContextoEmpresa contexto = obtenerContexto();
-        List<OrdenRespuestaDto> ordenes = service.listarOrdenesPorEmpresa(contexto.companyId());
+        EstadoOrden estado = status == null || status.isBlank() ? null : interpretar(status);
+        List<OrdenRespuestaDto> ordenes = service.listar(contexto, estado,
+                from == null ? null : from.atStartOfDay(),
+                to == null ? null : to.atTime(LocalTime.MAX));
         return ResponseEntity.ok(ordenes);
     }
 
-    /** Cambio de estado del caso: PUT /api/workorders/{id}/status con {"status": "EN_DESPLAZAMIENTO"}. */
     /** El TECNICO ve las ordenes que tiene asignadas (y su ficha). */
     @GetMapping("/mias")
     public ResponseEntity<MisOrdenesDto> misOrdenes() {
         return ResponseEntity.ok(service.misOrdenes(obtenerContexto()));
     }
 
+    /** Detalle de la orden con su historial de estados y comentarios. */
+    @GetMapping("/{id:\\d+}")
+    public ResponseEntity<OrdenDetalleDto> detalle(@PathVariable Long id) {
+        return ResponseEntity.ok(service.detalle(id, obtenerContexto()));
+    }
+
+    /**
+     * Cambio de estado del caso: PUT /api/workorders/{id}/status con
+     * {"status": "EN_DESPLAZAMIENTO", "comentario": "Salgo desde la bodega"}.
+     * El comentario es opcional y queda en el historial de la orden.
+     */
     @PutMapping("/{id}/status")
     public ResponseEntity<OrdenRespuestaDto> cambiarEstado(
             @PathVariable Long id,
             @Valid @RequestBody CambioEstadoDto cambio) {
         ContextoEmpresa contexto = obtenerContexto();
-        OrdenRespuestaDto respuesta = service.cambiarEstado(id, interpretar(cambio.status()), contexto);
+        OrdenRespuestaDto respuesta = service.cambiarEstado(id, interpretar(cambio.status()), cambio.comentario(), contexto);
         return ResponseEntity.ok(respuesta);
     }
 
@@ -64,7 +89,7 @@ public class OrdenDeTrabajoController {
             @PathVariable Long id,
             @Valid @RequestBody AsignacionDto asignacion) {
         ContextoEmpresa contexto = obtenerContexto();
-        return ResponseEntity.ok(service.asignarTecnico(id, asignacion.tecnicoId(), contexto));
+        return ResponseEntity.ok(service.asignarTecnico(id, asignacion.tecnicoId(), asignacion.comentario(), contexto));
     }
 
     /** Forma anterior (?nuevoEstado=), se mantiene para no romper al frontend actual. */

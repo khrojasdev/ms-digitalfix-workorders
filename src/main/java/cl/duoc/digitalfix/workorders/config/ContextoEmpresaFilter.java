@@ -26,16 +26,33 @@ public class ContextoEmpresaFilter extends OncePerRequestFilter {
             String empresaStr = request.getHeader("X-Company-Id");
             String rolesStr = request.getHeader("X-Roles");
             String email = request.getHeader("X-User-Email");
+            String nombre = request.getHeader("X-User-Name");
             if (empresaStr != null && !empresaStr.isBlank()) {
                 Long companyId = Long.parseLong(empresaStr.trim());
                 Set<String> roles = rolesStr == null || rolesStr.isBlank() ? Collections.emptySet() : Arrays.stream(rolesStr.split(",")).map(String::trim).map(String::toUpperCase).collect(Collectors.toSet());
                 ContextoEmpresaHolder.establecer(new ContextoEmpresa(oid, companyId, roles, correlacion,
-                        email == null || email.isBlank() ? null : email.trim().toLowerCase()));
+                        email == null || email.isBlank() ? null : email.trim().toLowerCase(),
+                        decodificar(nombre)));
             }
             filterChain.doFilter(request, response);
         } finally {
             ContextoEmpresaHolder.limpiar();
             MDC.remove("correlacion");
+        }
+    }
+
+    /**
+     * El BFF manda el nombre codificado como en una URL (UTF-8), porque una
+     * cabecera HTTP no lleva bien tildes ni enes ("Perez" con tilde).
+     */
+    static String decodificar(String valor) {
+        if (valor == null || valor.isBlank()) {
+            return null;
+        }
+        try {
+            return java.net.URLDecoder.decode(valor.trim(), java.nio.charset.StandardCharsets.UTF_8);
+        } catch (IllegalArgumentException e) {
+            return valor.trim();
         }
     }
 }

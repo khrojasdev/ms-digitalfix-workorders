@@ -8,6 +8,9 @@ public interface OrdenDeTrabajoRepository extends JpaRepository<OrdenDeTrabajo, 
     // Buscar todas las órdenes de una empresa (para mantener el aislamiento de datos)
     List<OrdenDeTrabajo> findByEmpresaId(Long empresaId);
 
+    // Las que creo un cliente: el CLIENTE solo sigue sus propias ordenes
+    List<OrdenDeTrabajo> findByEmpresaIdAndCreadorId(Long empresaId, String creadorId);
+
     // Las ordenes asignadas a un tecnico, para su vista "Mis ordenes"
     List<OrdenDeTrabajo> findByEmpresaIdAndTecnicoIdOrderByFechaCreacionDesc(Long empresaId, Long tecnicoId);
 }
