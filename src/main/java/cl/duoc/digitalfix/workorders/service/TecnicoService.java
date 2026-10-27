@@ -10,6 +10,8 @@ import cl.duoc.digitalfix.workorders.error.SolicitudInvalida;
 import cl.duoc.digitalfix.workorders.repository.TecnicoRepository;
 import cl.duoc.digitalfix.workorders.web.dto.TecnicoRespuestaDto;
 import cl.duoc.digitalfix.workorders.web.dto.TecnicoSolicitudDto;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -19,6 +21,8 @@ import java.util.Optional;
 /** Tecnicos de terreno de la empresa. Los gestiona el ADMIN o el SUPERVISOR. */
 @Service
 public class TecnicoService {
+
+    private static final Logger log = LoggerFactory.getLogger(TecnicoService.class);
 
     private final TecnicoRepository repository;
 
@@ -86,8 +90,9 @@ public class TecnicoService {
     /**
      * La ficha del TECNICO que esta llamando. Se busca por su cuenta (oid); si
      * aun no esta vinculada, se busca por el correo con que inicio sesion y se
-     * vincula. Asi el supervisor solo tiene que darlo de alta con el mismo
-     * correo de su cuenta de Entra ID.
+     * vincula. Si tampoco existe una ficha con ese correo, se crea con los
+     * datos de su cuenta (nombre y correo): el rol ya viene asignado en el
+     * tenant, asi que nadie tiene que volver a darlo de alta a mano.
      */
     @Transactional
     public Tecnico delUsuario(ContextoEmpresa contexto) {
@@ -97,7 +102,7 @@ public class TecnicoService {
         }
 
         Optional<Tecnico> vinculado = repository.findByEmpresaIdAndUsuarioOid(contexto.companyId(), contexto.userOid());
-        Tecnico tecnico = vinculado.orElseGet(() -> vincularPorCorreo(contexto));
+        Tecnico tecnico = vinculado.orElseGet(() -> vincularOCrear(contexto));
 
         if (!tecnico.isActivo()) {
             throw new AccesoDenegado("Tu ficha de tecnico esta desactivada. Habla con tu supervisor.");
@@ -105,19 +110,37 @@ public class TecnicoService {
         return tecnico;
     }
 
-    private Tecnico vincularPorCorreo(ContextoEmpresa contexto) {
+    private Tecnico vincularOCrear(ContextoEmpresa contexto) {
         String email = normalizarEmail(contexto.email());
-        Tecnico tecnico = email == null ? null
-                : repository.findByEmpresaIdAndEmailIgnoreCase(contexto.companyId(), email).orElse(null);
-        if (tecnico == null) {
-            throw new RecursoNoEncontrado("Tu cuenta" + (email == null ? "" : " (" + email + ")")
-                    + " no esta registrada como tecnico en tu empresa. Pide al supervisor que te agregue con ese correo.");
+        if (email == null) {
+            throw new RecursoNoEncontrado("Tu cuenta no trae correo, asi que no se puede crear tu ficha de tecnico. "
+                    + "Pide al supervisor que te agregue.");
         }
-        if (tecnico.getUsuarioOid() != null) {
-            throw new Conflicto("La ficha de " + tecnico.getNombre() + " ya esta vinculada a otra cuenta.");
+        Optional<Tecnico> porCorreo = repository.findByEmpresaIdAndEmailIgnoreCase(contexto.companyId(), email);
+        if (porCorreo.isPresent()) {
+            Tecnico tecnico = porCorreo.get();
+            if (tecnico.getUsuarioOid() != null) {
+                throw new Conflicto("La ficha de " + tecnico.getNombre() + " ya esta vinculada a otra cuenta.");
+            }
+            tecnico.vincularCuenta(contexto.userOid());
+            log.info("Ficha de tecnico {} vinculada a su cuenta por el correo {}.", tecnico.getId(), email);
+            return repository.save(tecnico);
         }
-        tecnico.vincularCuenta(contexto.userOid());
-        return repository.save(tecnico);
+        Tecnico nuevo = new Tecnico(contexto.companyId(), nombreDesde(contexto, email), email, null, null);
+        nuevo.vincularCuenta(contexto.userOid());
+        nuevo = repository.save(nuevo);
+        log.info("Ficha de tecnico {} creada desde la cuenta {} ({}).", nuevo.getId(), contexto.userOid(), email);
+        return nuevo;
+    }
+
+    /** El nombre de la cuenta; si no viene, la parte del correo antes de la arroba. */
+    private static String nombreDesde(ContextoEmpresa contexto, String email) {
+        String nombre = contexto.nombre();
+        if (nombre == null || nombre.isBlank()) {
+            nombre = email.substring(0, email.indexOf('@') > 0 ? email.indexOf('@') : email.length());
+        }
+        nombre = nombre.trim();
+        return nombre.length() <= 120 ? nombre : nombre.substring(0, 120);
     }
 
     private static String normalizarEmail(String email) {
