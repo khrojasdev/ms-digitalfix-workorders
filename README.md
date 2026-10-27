@@ -13,6 +13,47 @@ Gestion de ordenes de trabajo: creacion, maquina de estados, asignacion y trazab
 
 Spring Boot 3, Spring Data JPA, Oracle, Flyway, RabbitMQ, Kafka
 
+## API
+
+Todas las rutas llegan por el BFF, que agrega la empresa, el usuario y los roles.
+
+| Metodo | Ruta | Quien | Que hace |
+|---|---|---|---|
+| POST | `/api/workorders` | ADMIN, SUPERVISOR, CLIENTE | Crea la orden (queda CREADA) |
+| GET | `/api/workorders?status=&from=&to=` | todos menos TECNICO | Lista con filtros opcionales; el CLIENTE ve solo las suyas |
+| GET | `/api/workorders/{id}` | segun rol | Detalle con su historial (CLIENTE: las suyas; TECNICO: las asignadas) |
+| GET | `/api/workorders/mias` | TECNICO | Su ficha y sus ordenes asignadas |
+| PUT | `/api/workorders/{id}/status` | ADMIN, SUPERVISOR, TECNICO | `{"status": "...", "comentario": "opcional"}` |
+| PUT | `/api/workorders/{id}/asignacion` | ADMIN, SUPERVISOR | `{"tecnicoId": 3, "comentario": "opcional"}` |
+| GET/POST/PUT/DELETE | `/api/workorders/tecnicos` | ADMIN, SUPERVISOR | Tecnicos de terreno |
+
+Ciclo de la orden: `CREADA -> ASIGNADA -> EN_DESPLAZAMIENTO -> EN_EJECUCION -> CERRADA`,
+con `CANCELADA` desde CREADA, ASIGNADA o EN_DESPLAZAMIENTO. Un cambio no permitido
+responde 409 (por ejemplo "No se puede pasar a EN_EJECUCION sin ASIGNAR un tecnico").
+
+Cada paso queda en `historial_orden` con quien lo hizo y el comentario, si lo hubo.
+
+El tecnico no se da de alta dos veces: cuando entra por primera vez con el rol
+TECNICO del tenant, se vincula con la ficha que tenga su mismo correo o, si no
+existe, se le crea una con el nombre y el correo de su cuenta.
+
+## Mensajeria (RabbitMQ)
+
+Productor. Cada cambio se publica en `ordenes.negocio.exchange` (topic) con la
+routing key `ordenes.eventos.<tipo>`, por ejemplo `ordenes.eventos.asignada`.
+Nombres en `application.yml` (`amqp.*`) y exchange declarado en `config/RabbitMQConfig`.
+
+| Consumidor | Cola | Para que |
+|---|---|---|
+| ms-digitalfix-audit | `ordenes.auditoria.queue` | Bitacora |
+| ms-digitalfix-report | `ordenes.reportes.queue` | Indicadores |
+| ms-digitalfix-notify | `ordenes.avisos.queue` | Avisos al cliente y ticket de despacho |
+| ms-digitalfix-catalog | `catalogo.stock.ordenes.queue` | Descuento de stock al asignar |
+
+El evento lleva `eventKey` (idempotencia), `correlacionId` (si la peticion no trae
+uno se usa la propia clave), estado anterior y nuevo, servicio, tecnico y la nota
+del cambio.
+
 ## Integrantes
 
 | Integrante | GitHub |
@@ -33,12 +74,6 @@ Spring Boot 3, Spring Data JPA, Oracle, Flyway, RabbitMQ, Kafka
 - [`ms-digitalfix-audit`](https://github.com/khrojasdev/ms-digitalfix-audit) - Microservicio
 - [`digitalfix-infra`](https://github.com/khrojasdev/digitalfix-infra) - Infraestructura
 
-## Pendiente por definir
-
-El documento del caso pide ademas *un microservicio administrador de RabbitMQ y otro de
-Kafka, segun la pauta de cada evaluacion*. Ni la EP1 ni la EP2 los evaluan, asi que no
-existen todavia como repositorios. Cuando la pauta de la evaluacion final los exija se
-agregaran como `ms-digitalfix-rabbit` y `ms-digitalfix-kafka`. La decision del equipo fue esperar la pauta.
 
 ## Tablero
 

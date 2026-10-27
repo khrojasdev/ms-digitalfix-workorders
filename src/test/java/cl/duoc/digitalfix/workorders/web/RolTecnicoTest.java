@@ -124,12 +124,35 @@ class RolTecnicoTest {
     }
 
     @Test
-    void sinFichaConSuCorreoRecibe404ConLaExplicacion() throws Exception {
-        tecnico("oid-nuevo", "nuevo@digitalfix.cl", get("/api/workorders/mias"))
-                .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.mensaje").value(
-                        "Tu cuenta (nuevo@digitalfix.cl) no esta registrada como tecnico en tu empresa. "
-                                + "Pide al supervisor que te agregue con ese correo."));
+    void sinFichaPreviaSeCreaConLosDatosDeSuCuenta() throws Exception {
+        // El rol viene del tenant: no hace falta que el supervisor lo vuelva a
+        // dar de alta. La ficha se crea con el nombre y el correo de la cuenta.
+        mvc.perform(get("/api/workorders/mias")
+                        .header("X-User-Oid", "oid-nuevo").header("X-Company-Id", EMPRESA).header("X-Roles", "TECNICO")
+                        .header("X-User-Email", "nuevo@digitalfix.cl")
+                        .header("X-User-Name", "Jos%C3%A9+P%C3%A9rez"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.tecnico.nombre").value("José Pérez"))
+                .andExpect(jsonPath("$.tecnico.email").value("nuevo@digitalfix.cl"))
+                .andExpect(jsonPath("$.tecnico.cuentaVinculada").value(true))
+                .andExpect(jsonPath("$.ordenes.length()").value(0));
+
+        // El supervisor ya lo ve en su lista y le puede asignar ordenes.
+        supervisor(get("/api/workorders/tecnicos"))
+                .andExpect(jsonPath("$[?(@.email == 'nuevo@digitalfix.cl')].nombre").value("José Pérez"));
+    }
+
+    @Test
+    void sinNombreEnLaCuentaUsaElCorreo() throws Exception {
+        tecnico("oid-sin-nombre", "sin.nombre@digitalfix.cl", get("/api/workorders/mias"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.tecnico.nombre").value("sin.nombre"));
+    }
+
+    @Test
+    void sinCorreoNoSePuedeCrearLaFicha() throws Exception {
+        tecnico("oid-sin-correo", "", get("/api/workorders/mias"))
+                .andExpect(status().isNotFound());
     }
 
     @Test

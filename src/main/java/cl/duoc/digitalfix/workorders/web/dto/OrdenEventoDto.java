@@ -26,5 +26,6 @@ public record OrdenEventoDto(
         Long tecnicoId,
         String tecnicoNombre,
         String tecnicoEmail,
-        String tecnicoTelefono
+        String tecnicoTelefono,
+        String nota               // comentario opcional del cambio (lo escribe quien cambia el estado)
 ) {}
